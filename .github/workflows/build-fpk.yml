@@ -16,7 +16,15 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run.sh
+
   build:
+    needs: [test]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
