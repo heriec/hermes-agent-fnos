@@ -38,7 +38,9 @@ jobs:
           PY="$(uv python find --managed-python 3.14)"
           PREFIX="$(dirname "$(dirname "$PY")")"
           mkdir -p .cache
-          cp -a "$PREFIX" .cache/python314
+          cp -aL "$PREFIX" .cache/python314
+          [ ! -L .cache/python314 ] || { echo "FAIL: python314 是软链"; exit 1; }
+          [ -x .cache/python314/bin/python3 ] || { echo "FAIL: python314 缺 bin/python3"; exit 1; }
           .cache/python314/bin/python3 -V
 
       - name: 读打包参数
@@ -84,6 +86,7 @@ jobs:
           tar xzf hermes-agent.fpk -C /tmp/chk
           tar xzf /tmp/chk/app.tgz -C /tmp/chk2
           [ -f /tmp/chk2/src/pyproject.toml ] || { echo "FAIL: 包内没有 src/"; exit 1; }
+          [ ! -L /tmp/chk2/python ] || { echo "FAIL: 包内 python 是软链（指向构建机路径）"; exit 1; }
           [ -x /tmp/chk2/python/bin/python3 ] || { echo "FAIL: 包内没有 CPython（app/python）"; exit 1; }
           /tmp/chk2/python/bin/python3 -V
             cd /tmp/chk2/src
