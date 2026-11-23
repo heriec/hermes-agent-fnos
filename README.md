@@ -1,5 +1,8 @@
 # Hermes Agent for fnOS
 
+[![tests](https://github.com/heriec/hermes-agent-fnos/actions/workflows/tests.yml/badge.svg)](https://github.com/heriec/hermes-agent-fnos/actions/workflows/tests.yml)
+[![release](https://img.shields.io/github/v/release/heriec/hermes-agent-fnos)](https://github.com/heriec/hermes-agent-fnos/releases/latest)
+
 在飞牛 fnOS 上一键安装 [Hermes Agent](https://github.com/NousResearch/hermes-agent)，用官方 Web UI 管理，支持在网页里直接更新上游版本。
 
 本仓库只做 fnOS 的安装壳：启停、数据落盘、网页更新、依赖托管。Agent 本体全部来自上游，不做修改。
@@ -38,9 +41,9 @@ $PKGVAR  = /vol1/@appdata/hermes-agent
 | `$PKGHOME/data/` | 用户数据：`config.yaml`、`.env`、会话、技能、记忆 |
 | `$PKGHOME/src/` | 内核源码，带 `.git`，网页更新在这里进行 |
 | `$PKGHOME/python/` | 包内 CPython 3.14（只当解释器，依赖由 PM 提供） |
-| `$PKGHOME/data/tools/` | PM 装的 CPython 3.14 + node/ffmpeg 等工具 |
+| `$PKGHOME/data/tools/` | PM 装的 CPython 3.14 与 node/ffmpeg 等工具 |
+| `$PKGHOME/data/installs/` | PM 管理的依赖环境（带租约，正在用的不会被回收） |
 | `$PKGHOME/bin/hermes` | 启动入口 |
-| `$PKGHOME/data/.hermes/`、`$PKGHOME/data/installs/` | PM 管理的依赖与工具链 |
 | `$PKGVAR/` | 日志与 pid：`info.log`、`gateway.log`、`dashboard.log`、`watchdog.log` |
 
 卸载或重装不会删除 `$PKGHOME/data/`，配置、会话与记忆都保留。
@@ -56,7 +59,7 @@ hermes pm install --without agent-browser --without cua-driver
 默认不装浏览器（Chromium，约 400 MB）和计算机操作驱动（cua-driver，约 70 MB）；需要时补装：
 
 ```bash
-hermes pm install chromium     # 浏览器工具
+hermes pm install agent-browser  # 浏览器工具
 hermes pm install cua-driver   # 计算机操作
 ```
 
