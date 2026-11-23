@@ -130,6 +130,7 @@ if pm_run install --without agent-browser --without cua-driver; then
     pm_run gc && log "pm gc ok" || log "pm gc skipped"
 else
     log "WARNING: pm install 失败（依赖缺失；网页更新也会报 NoCommittedEnvironment）"
+    [ -n "${TRIM_TEMP_LOGFILE:-}" ] && echo "依赖安装失败，请检查网络后重启应用，或执行 hermes pm install" > "$TRIM_TEMP_LOGFILE" 2>/dev/null
 fi
 
 ACTUAL=$("$HERMES_BIN" --version 2>/dev/null | head -1 || echo unknown)
