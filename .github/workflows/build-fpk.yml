@@ -26,14 +26,14 @@ jobs:
         with:
           node-version: "26"   # ui-tui 的 engines 要求 node>=26（npm 需 <11.10 或 >=11.17）
 
-      - name: 内置 CPython（build.sh 会把它打进 app/python）
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: false
       - name: 准备 python314
+        env:
+          UV_NO_CONFIG: "1"
+          UV_NO_PROJECT: "1"
         run: |
-          uv python install 3.14.7
-          PY="$(uv python find 3.14.7)"
+          # 只要解释器本体，不建 bin 链接、不查 registry（避免被项目配置干扰）
+          uv python install --no-bin --no-registry 3.14
+          PY="$(uv python find --managed-python 3.14)"
           PREFIX="$(dirname "$(dirname "$PY")")"
           mkdir -p .cache
           cp -a "$PREFIX" .cache/python314
@@ -83,7 +83,8 @@ jobs:
           tar xzf /tmp/chk/app.tgz -C /tmp/chk2
           [ -f /tmp/chk2/src/pyproject.toml ] || { echo "FAIL: 包内没有 src/"; exit 1; }
           [ -x /tmp/chk2/python/bin/python3 ] || { echo "FAIL: 包内没有 CPython（app/python）"; exit 1; }
-          cd /tmp/chk2/src
+          /tmp/chk2/python/bin/python3 -V
+            cd /tmp/chk2/src
           echo "fpk=$(du -sh "$GITHUB_WORKSPACE/hermes-agent.fpk" | cut -f1)"
           echo "app.tgz=$(du -sh /tmp/chk/app.tgz | cut -f1)"
           echo "install_stamp=$(grep -o '"commit": "[0-9a-f]\{12\}' install-stamp.json 2>/dev/null | head -1)"

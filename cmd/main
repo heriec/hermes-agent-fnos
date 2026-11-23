@@ -16,7 +16,7 @@ export PYTHONUNBUFFERED=1
 # HERMES_BIN 由 lib.sh 提供（$HOME_DIR/bin/hermes）
 
 start_gateway() {
-    if pid_alive "$GATEWAY_PID"; then
+    if pid_alive "$GATEWAY_PID" && own_pid "$(read_pid "$GATEWAY_PID")"; then
         log "gateway already running pid=$(read_pid "$GATEWAY_PID")"
         return 0
     fi
@@ -27,7 +27,7 @@ start_gateway() {
 }
 
 start_dashboard() {
-    if pid_alive "$DASHBOARD_PID"; then
+    if pid_alive "$DASHBOARD_PID" && own_pid "$(read_pid "$DASHBOARD_PID")"; then
         log "dashboard already running pid=$(read_pid "$DASHBOARD_PID")"
         return 0
     fi
@@ -50,7 +50,7 @@ start_dashboard() {
 }
 
 start_watchdog() {
-    if pid_alive "$WATCHDOG_PID"; then
+    if pid_alive "$WATCHDOG_PID" && own_pid "$(read_pid "$WATCHDOG_PID")"; then
         return 0
     fi
     setsid nohup "$APP_DIR/scripts/watchdog.sh" >> "$VAR_DIR/watchdog.log" 2>&1 &
@@ -70,6 +70,7 @@ wait_ready() {
 
 do_start() {
     [ -x "$HERMES_BIN" ] || die "未找到 $HERMES_BIN，请先安装内核"
+    [ -x "$PY_BIN" ] || die "未找到解释器 $PY_BIN（包内 python 未落盘？重装应用）"
     have_src || die "未找到内核源码目录（$SRC_DIR）"
 
     start_gateway
@@ -96,9 +97,13 @@ do_stop() {
 do_status() {
     # 端口应答即视为在跑；pid 文件可能因 Hermes 自身重启而过期
     curl -sf -o /dev/null --max-time 3 "http://127.0.0.1:${WEB_PORT}/" || return 3
-    local lp
-    lp=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
-    [ -n "$lp" ] && [ "$lp" != "$(read_pid "$DASHBOARD_PID")" ] && echo "$lp" > "$DASHBOARD_PID"
+    # 没有 ss 就只认端口应答（有 ss 时再核对端口属主是不是我们）
+    if command -v ss >/dev/null 2>&1; then
+        local lp
+        lp=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
+        [ -n "$lp" ] && own_pid "$lp" || return 3     # 端口被别的程序占着 → 不算我们活着
+        [ "$lp" != "$(read_pid "$DASHBOARD_PID")" ] && echo "$lp" > "$DASHBOARD_PID"
+    fi
     return 0
 }
 

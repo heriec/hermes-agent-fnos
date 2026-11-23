@@ -37,7 +37,8 @@ $PKGVAR  = /vol1/@appdata/hermes-agent
 |---|---|
 | `$PKGHOME/data/` | 用户数据：`config.yaml`、`.env`、会话、技能、记忆 |
 | `$PKGHOME/src/` | 内核源码，带 `.git`，网页更新在这里进行 |
-| `$PKGHOME/python/` | 包内 CPython 3.14 |
+| `$PKGHOME/python/` | 包内 CPython 3.14（只当解释器，依赖由 PM 提供） |
+| `$PKGHOME/data/tools/` | PM 装的 CPython 3.14 + node/ffmpeg 等工具 |
 | `$PKGHOME/bin/hermes` | 启动入口 |
 | `$PKGHOME/data/.hermes/`、`$PKGHOME/data/installs/` | PM 管理的依赖与工具链 |
 | `$PKGVAR/` | 日志与 pid：`info.log`、`gateway.log`、`dashboard.log`、`watchdog.log` |
@@ -80,16 +81,19 @@ $H/bin/hermes pm doctor        # 依赖体检
 
 **Web 界面打不开**：看 `$PKGVAR/dashboard.log` 和 `$PKGVAR/info.log`，确认 9219 在监听。
 
-**日志出现 `install state is not writable by this user`**：有人用 root 跑过 `hermes pm`，PM 状态目录属主被改：
-
-```bash
-sudo bash /var/apps/hermes-agent/target/scripts/fix-perms.sh
-sudo appcenter-cli stop hermes-agent && sudo appcenter-cli start hermes-agent
-```
+**日志出现 `install state is not writable by this user`**：有人用 root 跑过 `hermes pm`，属主被改。重装应用即可（安装流程会重新 chown）。
 
 **网页更新失败**：确认 `$PKGHOME/src/.git` 存在且工作树干净（`git -C $PKGHOME/src status --porcelain`），再看 `$PKGVAR/hermes-update.log`。
 
 **依赖损坏**：`$H/bin/hermes pm repair`，然后重启应用。
+
+## 测试
+
+```bash
+bash tests/run.sh
+```
+
+覆盖安装/升级的关键判断：源码三分支（首次铺、同版本跳过、包内 commit 未知时重铺、用户网页更新后保留）、包标识、安装戳与前端标记、Web 登录凭据语义、进程 pid 复用保护与看门狗清理。不联网，几十秒跑完；CI 在每次 push / PR 跑一遍。
 
 ## 从源码构建
 
@@ -109,7 +113,7 @@ CI 在 GitHub Actions 里完成（`.github/workflows/build-fpk.yml`），打 `v*
 ```
 manifest              应用元数据（安装时由 build.sh 写入版本、端口、checksum）
 cmd/                  fnOS 生命周期入口：main 启停，install/upgrade/uninstall 回调
-app/scripts/          setup-core 安装流程、watchdog 保活、rebuild-dist 前端重建、fix-perms
+app/scripts/          setup-core 安装流程、watchdog 保活、rebuild-dist 前端重建
 app/ui/               桌面图标与入口配置
 wizard/install        安装向导（Web 登录账号密码）
 build.sh / build.env  fpk 打包
