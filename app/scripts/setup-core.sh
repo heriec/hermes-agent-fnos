@@ -184,9 +184,9 @@ fi
 # 密码只在第一次安装时确定：既有哈希就一律沿用，升级/重装都不改。
 # 只有首次安装且向导没传密码时才生成随机密码，写进安装提示。
 ENV_FILE="$DATA_DIR/.env"
-DASH_USER=${HERMES_DASH_USER:-${WIZARD_HERMES_DASH_USER:-${hermes_dash_user:-${wizard_hermes_dash_user:-admin}}}}
+DASH_USER=${hermes_dash_user:-admin}
 DASH_USER=${DASH_USER//\'/}     # 值要写进 .env 的单引号里
-DASH_PASS=${HERMES_DASH_PASSWORD:-${WIZARD_HERMES_DASH_PASSWORD:-${hermes_dash_password:-${wizard_hermes_dash_password:-}}}}
+DASH_PASS=${hermes_dash_password:-}
 
 env_set() {   # env_set KEY=VALUE ...：改已有键、没有就追加，绝不产生重复行
     "$PY_BIN" - "$ENV_FILE" "$@" <<'PY'
