@@ -14,6 +14,10 @@ assert_has "按包标识铺源码" "$out" "syncing source"
 assert_file "源码已落盘" "$SB/home/src/pyproject.toml"
 assert_eq "包标识写入" "$(cat "$SB/home/.package-version")" "0.0.1-${PKG_C:0:8}"
 assert_file "入口脚本生成" "$SB/home/bin/hermes"
+case "$(grep exec "$SB/home/bin/hermes")" in
+    *"/data/tools/python-3.14"*) ok "入口用 PM 的 python" ;;
+    *) bad "入口用 PM 的 python" "实际: $(grep exec "$SB/home/bin/hermes")" ;;
+esac
 assert_eq "前端标记=包内 commit" "$(cat "$SB/home/data/.dist_commit")" "$PKG_C"
 
 echo "== 再跑一次：同版本不动 =="

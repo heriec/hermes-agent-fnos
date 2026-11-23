@@ -21,9 +21,18 @@ DATA_DIR="$HOME_DIR/data"
 # 源码从包复制到持久目录：target 会被升级整包替换，运行期的写入也不该落在包目录。
 SRC_DIR="$HOME_DIR/src"
 DIST_MARK="$DATA_DIR/.dist_commit"   # dist 对应的源码 commit（hermes update 后据此触发重建）
-# 入口 = 包内 CPython + 一个 3 行脚本；依赖由 PM 在运行期挂载。
-# 包里这份 python 只当解释器用（自带 pip，不含任何依赖）。
-PY_BIN="$HOME_DIR/python/bin/python3"
+# 两个解释器，职责分开：
+#   BOOT_PY  包里那份 —— 只在装包时把 PM 跑起来（点火用，装完不再参与）
+#   PY_BIN   PM 那份 —— 运行服务、重建前端都用它（依赖库就是它编的，版本天然对齐）
+BOOT_PY="$HOME_DIR/python/bin/python3"
+resolve_py() {
+    local c
+    for c in $(ls -d "$DATA_DIR"/tools/python-3.14*/bin/python3 2>/dev/null | sort -Vr); do
+        [ -x "$c" ] && { echo "$c"; return 0; }
+    done
+    return 1
+}
+PY_BIN=$(resolve_py || true)
 HERMES_BIN="$HOME_DIR/bin/hermes"
 
 # 端口：优先环境变量，其次打包时写入的 config/web_port（缺省 9219）
@@ -110,12 +119,12 @@ stop_pid_file() {
 # 进程命令行带的是源码路径或包内解释器路径，按这两种特征匹配。
 kill_own_processes() {
     local pat
-    for pat in "$HOME_DIR/python/bin/python3" "$HOME_DIR/src" "$HOME_DIR/bin/hermes" \
+    for pat in "$DATA_DIR/tools/python" "$HOME_DIR/src" "$HOME_DIR/bin/hermes" \
                "$APP_DIR/scripts/watchdog.sh"; do
         pkill -TERM -f "$pat" 2>/dev/null || true
     done
     sleep 1
-    for pat in "$HOME_DIR/python/bin/python3" "$HOME_DIR/src" "$HOME_DIR/bin/hermes" \
+    for pat in "$DATA_DIR/tools/python" "$HOME_DIR/src" "$HOME_DIR/bin/hermes" \
                "$APP_DIR/scripts/watchdog.sh"; do
         pkill -KILL -f "$pat" 2>/dev/null || true
     done

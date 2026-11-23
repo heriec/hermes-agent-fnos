@@ -100,10 +100,10 @@ if [ "$DRY" = "1" ]; then
     printf '#!/bin/sh\nexit 0\n' > "$HERMES_BIN"
     chmod +x "$HERMES_BIN"
 else
-# 1) 包内 CPython 落到 HOME（版本不同就替换，否则新包要求更高的 python 时会一直用旧的）
+# 1) 包里那份 python 落到 HOME（点火用：只在装包时把 PM 跑起来）
 if [ -d "$APP_DIR/python" ]; then
     NEW_PY=$("$APP_DIR/python/bin/python3" -V 2>&1 || true)
-    CUR_PY=$([ -x "$PY_BIN" ] && "$PY_BIN" -V 2>&1 || true)
+    CUR_PY=$([ -x "$BOOT_PY" ] && "$BOOT_PY" -V 2>&1 || true)
     if [ "$NEW_PY" != "$CUR_PY" ]; then
         log "installing bundled python ($NEW_PY) -> $HOME_DIR/python"
         rm -rf "$HOME_DIR/python"
@@ -111,29 +111,16 @@ if [ -d "$APP_DIR/python" ]; then
             || die "包内 python 复制失败"
     fi
 fi
-[ -x "$PY_BIN" ] || die "找不到包内 CPython（$APP_DIR/python）"
+[ -x "$BOOT_PY" ] || die "找不到包内 CPython（$APP_DIR/python）"
 
-# 2) hermes 入口
-mkdir -p "$HOME_DIR/bin"
-cat > "$HERMES_BIN" <<WRAP
-#!/bin/sh
-export PYTHONPATH="$SRC_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
-exec "$PY_BIN" -m hermes_cli.main "\$@"
-WRAP
-chmod +x "$HERMES_BIN"
-
-# 3) 清掉历史遗留的入口 venv（早期版本建过）
-[ -d "$HOME_DIR/venv" ] && { rm -rf "$HOME_DIR/venv"; log "removed legacy venv"; }
-
-# 4) 依赖安装（唯一一次）：Python 依赖 + node/npm/ffmpeg/ripgrep 等工具
-# pm.cli 是 stdlib-only 入口，依赖还没装时也能运行。
-# chromium、cua-driver 是上游"默认但可选"的大件（约 475M），本包默认不装；
-# 需要时执行 hermes pm install chromium / cua-driver。
+# 2) 依赖安装（唯一一次）：Python 依赖 + node/npm/ffmpeg/ripgrep 等工具
+# pm.cli 是 stdlib-only 入口，依赖还没装时也能运行 → 用包里那份 python 点火
+# chromium、cua-driver 是上游"默认但可选"的大件（约 475M），本包默认不装
 export UV_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
 pm_run() {
     local sub=$1; shift
     HERMES_HOME="$DATA_DIR" HOME="$DATA_DIR" UV_INDEX_URL="$UV_INDEX_URL" PYTHONPATH="$SRC_DIR" \
-        "$PY_BIN" -c "import sys; from pm.cli import main; sys.exit(main(['$sub'] + sys.argv[1:]))" "$@" \
+        "$BOOT_PY" -c "import sys; from pm.cli import main; sys.exit(main(['$sub'] + sys.argv[1:]))" "$@" \
         >>"$LOG_FILE" 2>&1
 }
 if pm_run install --without agent-browser --without cua-driver; then
@@ -143,6 +130,23 @@ else
     log "WARNING: pm install 失败（依赖缺失；网页更新也会报 NoCommittedEnvironment）"
     [ -n "${TRIM_TEMP_LOGFILE:-}" ] && echo "依赖安装失败，请检查网络后重启应用，或执行 hermes pm install" > "$TRIM_TEMP_LOGFILE" 2>/dev/null
 fi
+
+# 3) 解释器确定下来：运行一律用 PM 那份（依赖库就是它编的，版本天然对齐）
+PY_BIN=$(resolve_py || true)
+[ -x "${PY_BIN:-}" ] || die "PM 没有提供 CPython（$DATA_DIR/tools/python-3.14*），pm install 没成功"
+log "interpreter: $PY_BIN"
+
+# 4) hermes 入口：指向 PM 的 python，PYTHONPATH 指向本次源码
+mkdir -p "$HOME_DIR/bin"
+cat > "$HERMES_BIN" <<WRAP
+#!/bin/sh
+export PYTHONPATH="$SRC_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
+exec "$PY_BIN" -m hermes_cli.main "\$@"
+WRAP
+chmod +x "$HERMES_BIN"
+
+# 5) 清掉历史遗留的入口 venv（早期版本建过）
+[ -d "$HOME_DIR/venv" ] && { rm -rf "$HOME_DIR/venv"; log "removed legacy venv"; }
 
 ACTUAL=$("$HERMES_BIN" --version 2>/dev/null | head -1 || echo unknown)
 log "launcher ready: $ACTUAL"

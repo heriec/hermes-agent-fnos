@@ -60,6 +60,10 @@ case "\$*" in
 esac
 WRAP
     chmod +x "$sb/home/python/bin/python3"
+
+    # PM 那份 python（安装脚本跑完 pm install 后解析的就是它；测试里用同样的桩）
+    mkdir -p "$sb/home/data/tools/python-3.14.9-test/bin"
+    cp "$sb/home/python/bin/python3" "$sb/home/data/tools/python-3.14.9-test/bin/python3"
 }
 
 run_setup() {  # run_setup <沙箱> <install|upgrade> [额外环境变量...]

@@ -68,7 +68,7 @@ wait_ready() {
 
 do_start() {
     [ -x "$HERMES_BIN" ] || die "未找到 $HERMES_BIN，请先安装内核"
-    [ -x "$PY_BIN" ] || die "未找到解释器 $PY_BIN（包内 python 未落盘？重装应用）"
+    [ -x "${PY_BIN:-}" ] || die "未找到运行解释器（$DATA_DIR/tools/python-3.14* 缺失），执行 hermes pm install 或重装应用"
     have_src || die "未找到内核源码目录（$SRC_DIR）"
 
     start_gateway

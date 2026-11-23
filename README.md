@@ -40,8 +40,8 @@ $PKGVAR  = /vol1/@appdata/hermes-agent
 |---|---|
 | `$PKGHOME/data/` | 用户数据：`config.yaml`、`.env`、会话、技能、记忆 |
 | `$PKGHOME/src/` | 内核源码，带 `.git`，网页更新在这里进行 |
-| `$PKGHOME/python/` | 包内 CPython 3.14（只当解释器，依赖由 PM 提供） |
-| `$PKGHOME/data/tools/` | PM 装的 CPython 3.14 与 node/ffmpeg 等工具 |
+| `$PKGHOME/python/` | 包内 CPython 3.14（只在装包时用来启动 PM，不参与运行） |
+| `$PKGHOME/data/tools/` | PM 装的 CPython 3.14 与 node/ffmpeg 等工具（运行服务用的就是这份 python） |
 | `$PKGHOME/data/installs/` | PM 管理的依赖环境（带租约，正在用的不会被回收） |
 | `$PKGHOME/bin/hermes` | 启动入口 |
 | `$PKGVAR/` | 日志与 pid：`info.log`、`gateway.log`、`dashboard.log`、`watchdog.log` |
