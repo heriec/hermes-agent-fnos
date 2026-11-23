@@ -26,6 +26,8 @@ jobs:
         with:
           node-version: "26"   # ui-tui 的 engines 要求 node>=26（npm 需 <11.10 或 >=11.17）
 
+      - uses: astral-sh/setup-uv@v5
+
       - name: 准备 python314
         env:
           UV_NO_CONFIG: "1"
