@@ -9,9 +9,12 @@
 
 ## 安装
 
-1. 下载最新安装包：
+1. 下载最新安装包（每次发布同时给两个名字，内容完全一样）：
 
 ```
+# 带版本号，便于区分
+https://gh-proxy.com/https://github.com/heriec/hermes-agent-fnos/releases/download/v<版本>/hermes-agent-<版本>.fpk
+# 不带版本号，固定指向最新版
 https://gh-proxy.com/https://github.com/heriec/hermes-agent-fnos/releases/latest/download/hermes-agent.fpk
 ```
 

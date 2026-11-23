@@ -85,20 +85,22 @@ jobs:
           echo "package=$VER kernel=$KVER commit=$COMMIT"
           ./build.sh --from "$UPSTREAM" --version "$VER" --kernel-version "$KVER" \
                      --commit "$COMMIT" --commit-date "$CDATE" --appname hermes-agent --port 9219
-          md5sum hermes-agent.fpk
+          md5sum hermes-agent-*.fpk hermes-agent.fpk
 
       - name: 包内自检（.git / 干净度 / 大小）
         run: |
           set -e
           rm -rf /tmp/chk /tmp/chk2 && mkdir -p /tmp/chk /tmp/chk2
-          tar xzf hermes-agent.fpk -C /tmp/chk
+          FPK_FILE=$(ls hermes-agent-*.fpk | head -1)
+          echo "包: $FPK_FILE"
+          tar xzf "$FPK_FILE" -C /tmp/chk
           tar xzf /tmp/chk/app.tgz -C /tmp/chk2
           [ -f /tmp/chk2/src/pyproject.toml ] || { echo "FAIL: 包内没有 src/"; exit 1; }
           [ ! -L /tmp/chk2/python ] || { echo "FAIL: 包内 python 是软链（指向构建机路径）"; exit 1; }
           [ -x /tmp/chk2/python/bin/python3 ] || { echo "FAIL: 包内没有 CPython（app/python）"; exit 1; }
           /tmp/chk2/python/bin/python3 -V
             cd /tmp/chk2/src
-          echo "fpk=$(du -sh "$GITHUB_WORKSPACE/hermes-agent.fpk" | cut -f1)"
+          echo "fpk=$(du -sh "$GITHUB_WORKSPACE/$FPK_FILE" | cut -f1)"
           echo "app.tgz=$(du -sh /tmp/chk/app.tgz | cut -f1)"
           echo "install_stamp=$(grep -o '"commit": "[0-9a-f]\{12\}' install-stamp.json 2>/dev/null | head -1)"
           echo "tests=$(ls -d tests 2>/dev/null || echo none)"
@@ -121,10 +123,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hermes-agent-fpk
-          path: hermes-agent.fpk
+          path: |
+            hermes-agent-*.fpk
+            hermes-agent.fpk
 
       - name: 打 tag 时挂 Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: hermes-agent.fpk
+          files: |
+            hermes-agent-*.fpk
+            hermes-agent.fpk
