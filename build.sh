@@ -92,7 +92,12 @@ cp -r "$ROOT/app/ui" "$ROOT/app/scripts" "$ROOT/app/config" "$PKG/app/"
 PYSRC=${HERMES_PYTHON_DIR:-$ROOT/.cache/python314}
 if [ -x "$PYSRC/bin/python3" ]; then
     echo ">>> bundling python: $PYSRC"
-    cp -a "$PYSRC" "$PKG/app/python"
+    # -L 解引用：$PYSRC 可能本身是个软链（uv 的 managed python），
+    # 直接 cp -a 会把链接原样打进包里，装到用户机器上就指向构建机的路径。
+    cp -aL "$PYSRC" "$PKG/app/python"
+    if [ -L "$PKG/app/python" ] || [ ! -x "$PKG/app/python/bin/python3" ] || [ -L "$PKG/app/python/bin/python3" ]; then
+        echo "ERROR: 包内 python 不是真文件（软链或缺失），打包停止" >&2; exit 1
+    fi
 else
     echo "ERROR: 未找到内置 Python 3.14（$PYSRC）；没有它安装必失败，先放到该路径或设 HERMES_PYTHON_DIR" >&2; exit 1
 fi
