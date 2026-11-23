@@ -82,6 +82,7 @@ jobs:
           tar xzf hermes-agent.fpk -C /tmp/chk
           tar xzf /tmp/chk/app.tgz -C /tmp/chk2
           [ -f /tmp/chk2/src/pyproject.toml ] || { echo "FAIL: 包内没有 src/"; exit 1; }
+          [ -x /tmp/chk2/python/bin/python3 ] || { echo "FAIL: 包内没有 CPython（app/python）"; exit 1; }
           cd /tmp/chk2/src
           echo "fpk=$(du -sh "$GITHUB_WORKSPACE/hermes-agent.fpk" | cut -f1)"
           echo "app.tgz=$(du -sh /tmp/chk/app.tgz | cut -f1)"
