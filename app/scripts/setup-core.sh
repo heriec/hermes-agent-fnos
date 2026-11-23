@@ -252,7 +252,16 @@ if [ -n "${TRIM_USERNAME:-}" ]; then
     chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$HOME_DIR" 2>>"$LOG_FILE" || log "WARNING: chown home failed"
     chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$VAR_DIR" 2>>"$LOG_FILE" || log "WARNING: chown var failed"
     chmod 775 "$APP_DIR" 2>/dev/null || true
-    chmod -R 750 "$DATA_DIR" 2>/dev/null || true
+    # 只收紧应用自己写的数据；tools/ 与 installs/ 是 PM 管的（几万个文件），
+    # 属主已由上面的 chown -R 修好，这里再递归一遍纯属白等。
+    for d in "$DATA_DIR"/*; do
+        case "$d" in
+            "$DATA_DIR/tools"|"$DATA_DIR/installs"|"$DATA_DIR/cache") continue ;;
+        esac
+        chmod -R 750 "$d" 2>/dev/null || true
+    done
+    chmod 750 "$DATA_DIR" 2>/dev/null || true
+    chmod 600 "$DATA_DIR/.env" 2>/dev/null || true   # 上面会不会放宽先不管，凭据文件固定 600
 else
     log "TRIM_USERNAME 为空，跳过权限修复"
 fi

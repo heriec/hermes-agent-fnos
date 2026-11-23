@@ -19,7 +19,7 @@ https://gh-proxy.com/https://github.com/heriec/hermes-agent-fnos/releases/latest
 3. 安装向导里设置 Web 界面的用户名和密码（不是飞牛账号，密码只存 scrypt 哈希）。
 4. 安装完成后从桌面图标或 `http://<NAS 地址>:9219` 打开，登录后配置模型与消息渠道。
 
-要求：fnOS 0.9.0 及以上、x86_64；安装过程需要联网（下载 CPython、依赖与 node/ffmpeg 等运行时，约 500 MB）。
+要求：fnOS 0.9.0 及以上、x86_64；安装过程需要联网（下载 CPython、Python 依赖与 node/ffmpeg 等工具链，约 1.7 GB）。
 
 ## 更新
 
