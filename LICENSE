@@ -19,9 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-本许可仅覆盖本仓库的 fnOS 安装壳代码（manifest、cmd/、app/、wizard/、build.sh）。
-Hermes Agent 本体来自 NousResearch/hermes-agent，遵循其上游授权。
-安装包内附带的上游源码与依赖不属于本许可证范围。
