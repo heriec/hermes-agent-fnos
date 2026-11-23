@@ -1,0 +1,28 @@
+[
+  {
+    "stepTitle": "Web 界面登录",
+    "items": [
+      {
+        "type": "text",
+        "field": "hermes_dash_user",
+        "label": "用户名",
+        "initValue": "admin",
+        "rules": [{ "required": true, "message": "请输入用户名" }]
+      },
+      {
+        "type": "password",
+        "field": "hermes_dash_password",
+        "label": "密码",
+        "rules": [
+          { "required": true, "message": "请输入密码" },
+          { "min": 8, "message": "至少 8 位" }
+        ]
+      },
+      {
+        "type": "tips",
+        "label": "说明",
+        "helpText": "这台 NAS 的 Hermes Web 界面使用独立账号密码登录（不是飞牛账号）。密码只保存 scrypt 哈希。"
+      }
+    ]
+  }
+]

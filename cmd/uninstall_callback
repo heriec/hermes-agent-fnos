@@ -1,0 +1,11 @@
+#!/bin/bash
+# 只清理运行态文件；data/（配置、记忆、会话）留在 @apphome。
+D=$(cd "$(dirname "$0")" && pwd)
+LIB="$D/../scripts/lib.sh"
+[ -f "$LIB" ] || LIB="${TRIM_APPDEST:-$D/../target}/scripts/lib.sh"
+. "$LIB"
+LOG_TAG=uninstall_callback
+
+rm -f "$VAR_DIR"/*.pid 2>/dev/null || true
+log "uninstall_callback done (user data kept at $DATA_DIR)"
+exit 0

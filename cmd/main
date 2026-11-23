@@ -1,0 +1,109 @@
+#!/bin/bash
+# Hermes Web 壳 —— 启停官方 gateway + dashboard，不包含任何自有面板。
+# start / stop / status，符合 fnOS fpk 生命周期约定。
+
+D=$(cd "$(dirname "$0")" && pwd)
+LIB="$D/../scripts/lib.sh"
+[ -f "$LIB" ] || LIB="${TRIM_APPDEST:-$D/../target}/scripts/lib.sh"
+. "$LIB"
+LOG_TAG=main
+
+export HOME="$DATA_DIR"
+export HERMES_HOME="$DATA_DIR"
+export PATH="$HOME_DIR/bin:/usr/local/bin:/usr/bin:/bin"
+export PYTHONUNBUFFERED=1
+
+# HERMES_BIN 由 lib.sh 提供（$HOME_DIR/bin/hermes）
+
+start_gateway() {
+    if pid_alive "$GATEWAY_PID"; then
+        log "gateway already running pid=$(read_pid "$GATEWAY_PID")"
+        return 0
+    fi
+    log "starting gateway"
+    setsid nohup "$HERMES_BIN" gateway run --replace \
+        >> "$VAR_DIR/gateway.log" 2>&1 &
+    echo $! > "$GATEWAY_PID"
+}
+
+start_dashboard() {
+    if pid_alive "$DASHBOARD_PID"; then
+        log "dashboard already running pid=$(read_pid "$DASHBOARD_PID")"
+        return 0
+    fi
+    # LAN 直连：浏览器访问 http://<NAS>:<port>。非 loopback 绑定会强制启用
+    # 官方 auth gate —— 没配 dashboard.basic_auth 时 dashboard fail-closed 退出，
+    # 这正是我们要的：宁可起不来，也不裸奔。
+    local host=${HERMES_WEB_HOST:-0.0.0.0}
+    local dist="$SRC_DIR/hermes_cli/web_dist"
+    if [ -f "$dist/index.html" ]; then
+        export HERMES_WEB_DIST="$dist"
+    fi
+    configure_bundled_tui
+    log "starting dashboard on ${host}:${WEB_PORT}"
+    # --isolated：本机只应有这一个 Hermes（fpk 管理），不参与「attach 到别的 host backend」。
+    # 不加的话，只要 data 里存在别的实例留下的 host-dashboard.json（从旧 fpk 升级、或把 data
+    # 从别处搬过来），新实例就会拒绝启动（exit 78：this host is already served by ...）。
+    setsid nohup "$HERMES_BIN" dashboard --isolated --host "$host" --port "$WEB_PORT" \
+        --no-open --skip-build >> "$VAR_DIR/dashboard.log" 2>&1 &
+    echo $! > "$DASHBOARD_PID"
+}
+
+start_watchdog() {
+    if pid_alive "$WATCHDOG_PID"; then
+        return 0
+    fi
+    setsid nohup "$APP_DIR/scripts/watchdog.sh" >> "$VAR_DIR/watchdog.log" 2>&1 &
+    echo $! > "$WATCHDOG_PID"
+}
+
+wait_ready() {
+    local i
+    for i in $(seq 1 30); do
+        if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:${WEB_PORT}/"; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+do_start() {
+    [ -x "$HERMES_BIN" ] || die "未找到 $HERMES_BIN，请先安装内核"
+    have_src || die "未找到内核源码目录（$SRC_DIR）"
+
+    start_gateway
+    start_dashboard
+    start_watchdog
+
+    if wait_ready; then
+        log "started: dashboard http://${HERMES_WEB_HOST:-0.0.0.0}:${WEB_PORT}/ gateway pid=$(read_pid "$GATEWAY_PID")"
+    else
+        log "WARNING: dashboard not answering on :${WEB_PORT} after 30s（见 $VAR_DIR/dashboard.log）"
+    fi
+    return 0
+}
+
+do_stop() {
+    stop_pid_file "$WATCHDOG_PID"
+    stop_pid_file "$DASHBOARD_PID"
+    stop_pid_file "$GATEWAY_PID"
+    kill_own_processes
+    log "stopped"
+    return 0
+}
+
+do_status() {
+    if pid_alive "$DASHBOARD_PID" \
+       && curl -sf -o /dev/null --max-time 3 "http://127.0.0.1:${WEB_PORT}/"; then
+        return 0
+    fi
+    return 3
+}
+
+case "${1:-}" in
+    start)  do_start ;;
+    stop)   do_stop ;;
+    status) do_status ;;
+    *)      exit 1 ;;
+esac

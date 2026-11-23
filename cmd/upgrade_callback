@@ -1,0 +1,8 @@
+#!/bin/bash
+# 升级后：源码整份替换、依赖同步；data/ 不动。
+D=$(cd "$(dirname "$0")" && pwd)
+LIB="$D/../scripts/lib.sh"
+[ -f "$LIB" ] || LIB="${TRIM_APPDEST:-$D/../target}/scripts/lib.sh"
+. "$LIB"
+
+exec bash "$APP_DIR/scripts/setup-core.sh" upgrade
