@@ -1,0 +1,15 @@
+#!/bin/bash
+# 安装前：停掉本应用残留进程，清理 pid，确保端口与文件句柄释放。
+D=$(cd "$(dirname "$0")" && pwd)
+LIB="$D/../scripts/lib.sh"
+[ -f "$LIB" ] || LIB="${TRIM_APPDEST:-$D/../target}/scripts/lib.sh"
+. "$LIB"
+LOG_TAG=install_init
+
+stop_pid_file "$WATCHDOG_PID"
+stop_pid_file "$DASHBOARD_PID"
+stop_pid_file "$GATEWAY_PID"
+kill_own_processes
+rm -f "$VAR_DIR"/*.pid 2>/dev/null || true
+log "install_init done"
+exit 0

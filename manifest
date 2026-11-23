@@ -1,0 +1,20 @@
+appname               = hermes-agent
+version               = 0.0.0
+
+display_name          = "Hermes Agent"
+desc                  = "Hermes Agent 的 fnOS 安装包：启动官方 Web UI，自带用户名/密码登录。<br/>• 数据与程序分离，卸载重装不丢配置、会话与记忆<br/>• 支持在网页内直接更新上游 Hermes"
+platform              = x86
+source                = thirdparty
+maintainer            = Nous Research
+maintainer_url        = https://github.com/NousResearch/hermes-agent
+distributor           = local
+distributor_url       = https://github.com/NousResearch/hermes-agent
+os_min_version        = 0.9.0
+ctl_stop              = true
+disable_authorization_path = false
+desktop_uidir         = ui
+desktop_applaunchname = hermes-agent.Application
+service_port          = 9219
+checkport             = false
+changelog             = 官方 Web UI + 网页内更新 + 依赖由 PM 统一管理
+checksum              = CHECKSUM_PLACEHOLDER_0123456789a

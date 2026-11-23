@@ -1,0 +1,116 @@
+name: build-fpk
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "fpk 版本号（留空则用 build.env 里的 PKG_VERSION）"
+        required: false
+      kernel_commit:
+        description: "Hermes 内核 commit（留空则用 PKG_COMMIT）"
+        required: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"   # ui-tui 的 engines 要求 node>=26（npm 需 <11.10 或 >=11.17）
+
+      - name: 内置 CPython（build.sh 会把它打进 app/python）
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: false
+      - name: 准备 python314
+        run: |
+          uv python install 3.14.7
+          PY="$(uv python find 3.14.7)"
+          PREFIX="$(dirname "$(dirname "$PY")")"
+          mkdir -p .cache
+          cp -a "$PREFIX" .cache/python314
+          .cache/python314/bin/python3 -V
+
+      - name: 读打包参数
+        run: |
+          set -a; . ./build.env; set +a
+          echo "PKG_VERSION=$PKG_VERSION" >> "$GITHUB_ENV"
+          echo "PKG_KERNEL=$PKG_KERNEL"  >> "$GITHUB_ENV"
+          echo "PKG_COMMIT=$PKG_COMMIT"  >> "$GITHUB_ENV"
+          echo "PKG_GIT_BRANCH=$PKG_GIT_BRANCH" >> "$GITHUB_ENV"
+          echo "PKG_GIT_ACCEL=${PKG_GIT_ACCEL:-}" >> "$GITHUB_ENV"
+
+      - name: 取上游源码（按 PKG_COMMIT 固定）
+        run: |
+          COMMIT="${{ inputs.kernel_commit }}"
+          [ -n "$COMMIT" ] || COMMIT="$PKG_COMMIT"
+          echo "kernel commit: $COMMIT"
+          # 只要 main：hermes update 只 fetch origin/main，其它分支的 commit/tree 没必要进包
+          git clone --depth 1 --single-branch --branch main --filter=blob:none --no-checkout \
+                    https://github.com/NousResearch/hermes-agent.git "$RUNNER_TEMP/up"
+          # 先写 sparse 规则再 checkout：tests/apps/website 的 blob 不下载
+          git -C "$RUNNER_TEMP/up" sparse-checkout init --no-cone
+          printf '/*\n!/tests/\n!/website/\n' > "$RUNNER_TEMP/up/.git/info/sparse-checkout"
+          git -C "$RUNNER_TEMP/up" fetch --depth 1 origin "$COMMIT"
+          git -C "$RUNNER_TEMP/up" checkout -B main FETCH_HEAD
+          git -C "$RUNNER_TEMP/up" config core.fileMode false
+          echo "UPSTREAM=$RUNNER_TEMP/up" >> "$GITHUB_ENV"
+
+      - name: 打包
+        run: |
+          VER="${{ inputs.package_version }}"
+          [ -n "$VER" ] || VER="$PKG_VERSION"
+          KVER="$PKG_KERNEL"
+          COMMIT="$(git -C "$UPSTREAM" rev-parse HEAD)"
+          CDATE="$(git -C "$UPSTREAM" log -1 --format=%cI)"
+          echo "package=$VER kernel=$KVER commit=$COMMIT"
+          ./build.sh --from "$UPSTREAM" --version "$VER" --kernel-version "$KVER" \
+                     --commit "$COMMIT" --commit-date "$CDATE" --appname hermes-agent --port 9219
+          md5sum hermes-agent.fpk
+
+      - name: 包内自检（.git / 干净度 / 大小）
+        run: |
+          set -e
+          rm -rf /tmp/chk /tmp/chk2 && mkdir -p /tmp/chk /tmp/chk2
+          tar xzf hermes-agent.fpk -C /tmp/chk
+          tar xzf /tmp/chk/app.tgz -C /tmp/chk2
+          [ -f /tmp/chk2/src/pyproject.toml ] || { echo "FAIL: 包内没有 src/"; exit 1; }
+          cd /tmp/chk2/src
+          echo "fpk=$(du -sh "$GITHUB_WORKSPACE/hermes-agent.fpk" | cut -f1)"
+          echo "app.tgz=$(du -sh /tmp/chk/app.tgz | cut -f1)"
+          echo "install_stamp=$(grep -o '"commit": "[0-9a-f]\{12\}' install-stamp.json 2>/dev/null | head -1)"
+          echo "tests=$(ls -d tests 2>/dev/null || echo none)"
+          echo "HEAD=$(git rev-parse --short HEAD) branch=$(git branch --show-current)"
+          echo "dirty=$(git status --porcelain | wc -l)"
+          echo "gitdir=$(du -sh .git | cut -f1) worktree=$(du -sh --exclude=.git . | cut -f1)"
+          echo "web_dist=$(ls hermes_cli/web_dist/index.html 2>/dev/null || echo MISSING)"
+          echo "tui_dist=$(ls ui-tui/dist/entry.js 2>/dev/null || echo MISSING)"
+          [ -d .git ] || { echo "FAIL: 包内无 .git"; exit 1; }
+          echo "accel=$(git config --get url.https://gh-proxy.com/https://github.com/.insteadof || echo NONE)"
+          git config --get url.https://gh-proxy.com/https://github.com/.insteadof >/dev/null \
+            || { echo "FAIL: 包内缺国内加速前缀"; exit 1; }
+          [ "$(git status --porcelain | wc -l)" = "0" ] || { echo "FAIL: 包内工作树脏"; git status --porcelain | head -5; exit 1; }
+          [ -f install-stamp.json ] || { echo "FAIL: 缺 install-stamp.json"; exit 1; }
+          [ -x ../scripts/rebuild-dist.sh ] || { echo "FAIL: 缺 scripts/rebuild-dist.sh（更新后重建钩子）"; exit 1; }
+          [ -d apps/shared ] || { echo "FAIL: 缺 apps/shared（本机重建必需）"; exit 1; }
+          [ -s hermes_cli/web_dist/index.html ] || { echo "FAIL: 缺 web_dist"; exit 1; }
+          [ -s ui-tui/dist/entry.js ] || { echo "FAIL: 缺 ui-tui dist"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hermes-agent-fpk
+          path: hermes-agent.fpk
+
+      - name: 打 tag 时挂 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: hermes-agent.fpk

@@ -1,0 +1,8 @@
+#!/bin/bash
+# 安装后：落源码、建入口、装依赖、写 Web 登录凭据。
+D=$(cd "$(dirname "$0")" && pwd)
+LIB="$D/../scripts/lib.sh"
+[ -f "$LIB" ] || LIB="${TRIM_APPDEST:-$D/../target}/scripts/lib.sh"
+. "$LIB"
+
+exec bash "$APP_DIR/scripts/setup-core.sh" install

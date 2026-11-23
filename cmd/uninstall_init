@@ -1,0 +1,13 @@
+#!/bin/bash
+D=$(cd "$(dirname "$0")" && pwd)
+LIB="$D/../scripts/lib.sh"
+[ -f "$LIB" ] || LIB="${TRIM_APPDEST:-$D/../target}/scripts/lib.sh"
+. "$LIB"
+LOG_TAG=uninstall_init
+
+stop_pid_file "$WATCHDOG_PID"
+stop_pid_file "$DASHBOARD_PID"
+stop_pid_file "$GATEWAY_PID"
+kill_own_processes
+log "uninstall_init done"
+exit 0

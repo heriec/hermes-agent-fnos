@@ -1,0 +1,6 @@
+.build/
+.cache/
+app/src/
+app/web_dist/
+app/config/bootstrap/
+*.fpk
