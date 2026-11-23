@@ -17,10 +17,15 @@ LOG_TAG="$MODE"
 trap 'die "脚本出错(L$LINENO)"' ERR
 
 # ---------------------------------------------------------------- 路径与版本
-[ -f "$APP_DIR/config/bootstrap/hermes-version.env" ] || die "缺少 config/bootstrap/hermes-version.env"
-# shellcheck disable=SC1091
-. "$APP_DIR/config/bootstrap/hermes-version.env"
+for f in hermes-version.env package-version.env; do
+    [ -f "$APP_DIR/config/bootstrap/$f" ] || die "缺少 config/bootstrap/$f"
+    # shellcheck disable=SC1090
+    . "$APP_DIR/config/bootstrap/$f"
+done
 [ -n "${HERMES_VERSION:-}" ] || die "hermes-version.env 未定义 HERMES_VERSION"
+PKG_VER="${PKG_VERSION:-unknown}"
+# 包标识 = 版本 + 内核 commit：同版本但换了 commit 也要重铺源码
+PKG_MARK="$PKG_VER-${PKG_COMMIT:0:8}"
 
 log "mode=$MODE version=$HERMES_VERSION"
 log "APP_DIR=$APP_DIR HOME_DIR=$HOME_DIR DATA_DIR=$DATA_DIR"
@@ -65,15 +70,15 @@ if [ -d "$SRC_DIR/.git" ] && [ -n "$PKG_COMMIT" ]; then
 fi
 if [ "$SELF_UPDATED" = "1" ] && [ -f "$SRC_DIR/pyproject.toml" ]; then
     log "keep self-updated source (HEAD ${cur_head:0:10} ahead of pkg ${PKG_COMMIT:0:10}), skip source sync"
-    echo "${PKG_VER:-unknown}" > "$MARK"
-elif [ ! -f "$SRC_DIR/pyproject.toml" ] || [ "$(cat "$MARK" 2>/dev/null)" != "${PKG_VER:-unknown}" ]; then
-    log "syncing source: $PKG_SRC_LOCAL -> $SRC_DIR (pkg=${PKG_VER:-unknown}, prev=$(cat "$MARK" 2>/dev/null || echo none))"
+    echo "$PKG_MARK" > "$MARK"
+elif [ ! -f "$SRC_DIR/pyproject.toml" ] || [ "$(cat "$MARK" 2>/dev/null)" != "$PKG_MARK" ]; then
+    log "syncing source: $PKG_SRC_LOCAL -> $SRC_DIR (pkg=$PKG_MARK, prev=$(cat "$MARK" 2>/dev/null || echo none))"
     mkdir -p "$SRC_DIR"
     find "$SRC_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
     cp -a --reflink=auto "$PKG_SRC_LOCAL"/. "$SRC_DIR"/ 2>>"$LOG_FILE" || die "源码复制失败"
-    echo "${PKG_VER:-unknown}" > "$MARK"
+    echo "$PKG_MARK" > "$MARK"
 else
-    log "source up to date (pkg=${PKG_VER:-unknown}): $SRC_DIR"
+    log "source up to date (pkg=$PKG_MARK): $SRC_DIR"
 fi
 [ -f "$SRC_DIR/hermes_cli/web_dist/index.html" ] || log "WARNING: 包内 web_dist 缺失（Web 界面会空白）"
 
@@ -136,7 +141,7 @@ fi  # DRY
 # 按包内 package-version.env 的 PKG_COMMIT 校准（用包内 CPython，不依赖系统 python）。
 STAMP="$SRC_DIR/install-stamp.json"
 if [ -n "$PKG_COMMIT" ] && ! printf '%s' "$PKG_COMMIT" | grep -qE '^0+$'; then
-    "$PY_BIN" - "$STAMP" "$PKG_COMMIT" "$HERMES_VERSION" <<'PY' >>"$LOG_FILE" 2>&1 || log "WARNING: 版本戳校准失败（Web 可能显示 unknown）"
+    if "$PY_BIN" - "$STAMP" "$PKG_COMMIT" "$HERMES_VERSION" <<'PY' >>"$LOG_FILE" 2>&1
 import json, sys, pathlib
 path, commit, ver = sys.argv[1:4]
 p = pathlib.Path(path)
@@ -156,7 +161,9 @@ d.update({
 p.write_text(json.dumps(d, indent=2) + "\n")
 print("stamp calibrated:", commit[:12], ver)
 PY
-    log "版本戳校准完成"
+    then log "版本戳校准完成"
+    else log "WARNING: 版本戳校准失败（Web 可能显示 unknown）"
+    fi
 else
     log "无 PKG_COMMIT，沿用包内 install-stamp.json"
 fi
