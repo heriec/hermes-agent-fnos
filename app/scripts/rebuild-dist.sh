@@ -9,6 +9,8 @@ LOG_TAG=rebuild-dist
 export HOME="$DATA_DIR"
 export HERMES_HOME="$DATA_DIR"
 export PATH="$HOME_DIR/bin:/usr/local/bin:/usr/bin:/bin"
+# 重建脚本直接用包内 CPython 跑（不经过 hermes 入口），要自己把源码挂上 sys.path
+export PYTHONPATH="$SRC_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 [ -x "$PY_BIN" ] || { log "no python, skip rebuild"; exit 0; }
 have_src || { log "no src, skip rebuild"; exit 0; }
@@ -32,10 +34,8 @@ ok_web = _build_web_ui(root / "web")
 print("web build:", ok_web, flush=True)
 try:
     build_source_tui(root, env=source_build_env())
-    ok_tui = True
     print("tui build: True", flush=True)
 except Exception as exc:  # tui 失败不该阻断 web
-    ok_tui = False
     print("tui build failed:", exc, flush=True)
 sys.exit(0 if ok_web else 1)
 PY

@@ -45,7 +45,6 @@ jobs:
           echo "PKG_VERSION=$PKG_VERSION" >> "$GITHUB_ENV"
           echo "PKG_KERNEL=$PKG_KERNEL"  >> "$GITHUB_ENV"
           echo "PKG_COMMIT=$PKG_COMMIT"  >> "$GITHUB_ENV"
-          echo "PKG_GIT_BRANCH=$PKG_GIT_BRANCH" >> "$GITHUB_ENV"
           echo "PKG_GIT_ACCEL=${PKG_GIT_ACCEL:-}" >> "$GITHUB_ENV"
 
       - name: 取上游源码（按 PKG_COMMIT 固定）

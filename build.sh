@@ -38,7 +38,6 @@ while [ $# -gt 0 ]; do
         --kernel-version) KERNEL_VERSION="$2"; shift 2 ;;
         --commit) COMMIT="$2"; shift 2 ;;
         --commit-date) COMMIT_DATE="$2"; shift 2 ;;
-        --git-branch) GIT_BRANCH="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
         -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -138,22 +137,11 @@ if [ -d "$PKG/app/src/.git" ]; then
         git -C "$PKG/app/src" config "url.${PKG_GIT_ACCEL}/https://github.com/.insteadOf" "https://github.com/"
         echo ">>> accel -> $PKG_GIT_ACCEL"
     fi
-    if [ -n "${PKG_GIT_REMOTE:-}" ]; then
-        git -C "$PKG/app/src" remote set-url origin "$PKG_GIT_REMOTE" 2>/dev/null \
-            || git -C "$PKG/app/src" remote add origin "$PKG_GIT_REMOTE"
-        echo ">>> origin -> $PKG_GIT_REMOTE"
-    fi
     ( cd "$PKG/app/src" || exit 0
       git config core.fileMode false
       git config commit.gpgsign false
       echo ">>> embedded .git: HEAD=$(git rev-parse --short HEAD 2>/dev/null) status=$(git status --porcelain 2>/dev/null | wc -l) dirty"
     )
-fi
-
-if [ -f "$PKG/app/src/hermes_cli/web_dist/index.html" ]; then
-    cp -r "$PKG/app/src/hermes_cli/web_dist" "$PKG/app/web_dist"
-else
-    echo "WARNING: 包内无 app/web_dist" >&2
 fi
 
 # ---------------------------------------------------------------- manifest / 版本
@@ -186,9 +174,7 @@ printf 'HERMES_VERSION=%s\n' "$KERNEL_VERSION" > "$PKG/app/config/bootstrap/herm
 # 包自身版本：安装期 appcenter 还没把 manifest 落到 /var/apps/<app>/，只能自带一份
 {
     printf 'PKG_VERSION=%s\n' "$VERSION"
-    printf 'PKG_KERNEL=%s\n' "$KERNEL_VERSION"
     printf 'PKG_COMMIT=%s\n' "$COMMIT"
-    printf 'PKG_GIT_BRANCH=%s\n' "${GIT_BRANCH:-main}"
 } > "$PKG/app/config/bootstrap/package-version.env"
 if [ -n "$COMMIT" ]; then
     printf '%s\n' "$COMMIT" > "$PKG/app/config/bootstrap/hermes-commit"
