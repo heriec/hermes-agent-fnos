@@ -69,7 +69,7 @@ if [ -d "$SRC_DIR/.git" ] && [ -n "$PKG_COMMIT" ]; then
         fi
     fi
 fi
-if [ "$SELF_UPDATED" = "1" ] && [ -f "$SRC_DIR/pyproject.toml" ]; then
+if [ "$SELF_UPDATED" = "1" ]; then
     log "keep self-updated source (HEAD ${cur_head:0:10} ahead of pkg ${PKG_COMMIT:0:10}), skip source sync"
     echo "$PKG_MARK" > "$MARK"
 elif [ ! -f "$SRC_DIR/pyproject.toml" ] || [ "$(cat "$MARK" 2>/dev/null)" != "$PKG_MARK" ]; then
@@ -250,12 +250,6 @@ fi
 if [ -n "${TRIM_USERNAME:-}" ]; then
     chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$APP_DIR" 2>>"$LOG_FILE" || log "WARNING: chown app dir failed"
     chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$HOME_DIR" 2>>"$LOG_FILE" || log "WARNING: chown home failed"
-    # PM 状态目录里若残留 root 文件，应用用户建 .leases 会失败（install state is not writable）。
-    for pd in "$DATA_DIR/tools" "$DATA_DIR/installs"; do
-        [ -d "$pd" ] || continue
-        n=$(find "$pd" -user root 2>/dev/null | wc -l)
-        [ "$n" -gt 0 ] && { log "perms: 修复 $pd 下 $n 个 root 条目"; chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$pd" 2>>"$LOG_FILE" || true; }
-    done
     chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$VAR_DIR" 2>>"$LOG_FILE" || log "WARNING: chown var failed"
     chmod 775 "$APP_DIR" 2>/dev/null || true
     chmod -R 750 "$DATA_DIR" 2>/dev/null || true
@@ -263,6 +257,5 @@ else
     log "TRIM_USERNAME 为空，跳过权限修复"
 fi
 
-echo "$HERMES_VERSION" > "$VAR_DIR/installed_version"
 trap - ERR
 log "$MODE finished: $HERMES_VERSION"

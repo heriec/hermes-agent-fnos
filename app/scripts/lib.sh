@@ -19,7 +19,7 @@ VAR_DIR=${TRIM_PKGVAR:-$APP_ROOT/var}
 DATA_DIR="$HOME_DIR/data"
 # 代码只有一份，由 git 管（update = fetch + reset --hard）。
 # 源码从包复制到持久目录：target 会被升级整包替换，运行期的写入也不该落在包目录。
-SRC_DIR="${HERMES_SRC_DIR:-$HOME_DIR/src}"
+SRC_DIR="$HOME_DIR/src"
 DIST_MARK="$DATA_DIR/.dist_commit"   # dist 对应的源码 commit（hermes update 后据此触发重建）
 # 入口 = 包内 CPython + 一个 3 行脚本；依赖由 PM 在运行期挂载。
 # 包里这份 python 只当解释器用（自带 pip，不含任何依赖）。
@@ -46,11 +46,8 @@ export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.co
 # 包里带预构建终端（没有 node_modules）；node 由 PM 提供，不绑 fnOS 的 nodejs。
 configure_bundled_tui() {
     local tui_dir="$SRC_DIR/ui-tui"
-    if [ -f "$tui_dir/dist/entry.js" ]; then
-        export HERMES_TUI_DIR="${HERMES_TUI_DIR:-$tui_dir}"
-    else
-        log "WARNING: bundled chat terminal entry missing: $tui_dir/dist/entry.js"
-    fi
+    [ -f "$tui_dir/dist/entry.js" ] || return 0    # 首次安装时 src 还没铺，静默跳过
+    export HERMES_TUI_DIR="${HERMES_TUI_DIR:-$tui_dir}"
 }
 
 DASHBOARD_PID="$VAR_DIR/dashboard.pid"
@@ -110,27 +107,31 @@ stop_pid_file() {
 }
 
 # 只清理本安装目录下的进程，绝不误伤同机其它 Hermes。
-# 实际进程是 PM 的 python -I -c "sys.path.insert(0, '<home>/src')"，命令行里带的是源码路径。
+# 进程命令行带的是源码路径或包内解释器路径，按这两种特征匹配。
 kill_own_processes() {
-    # 三种形态都出现过：包内 python -m hermes_cli.main、python -I -c (sys.path 指向 src)、
-    # 以及入口脚本本身。任何一种都不能漏，否则 stop/uninstall 后进程残留。
     local pat
     for pat in "$HOME_DIR/python/bin/python3" "$HOME_DIR/src" "$HOME_DIR/bin/hermes" \
                "$APP_DIR/scripts/watchdog.sh"; do
         pkill -TERM -f "$pat" 2>/dev/null || true
     done
     sleep 1
-    for pat in "$HOME_DIR/python/bin/python3" "$HOME_DIR/src" "$HOME_DIR/bin/hermes"; do
+    for pat in "$HOME_DIR/python/bin/python3" "$HOME_DIR/src" "$HOME_DIR/bin/hermes" \
+               "$APP_DIR/scripts/watchdog.sh"; do
         pkill -KILL -f "$pat" 2>/dev/null || true
     done
+}
+
+# 停掉整套服务（看门狗先停，否则它会把 gateway 拉回来）
+stop_all() {
+    stop_pid_file "$WATCHDOG_PID"
+    stop_pid_file "$DASHBOARD_PID"
+    stop_pid_file "$GATEWAY_PID"
+    kill_own_processes
 }
 
 have_src() {
     [ -f "$SRC_DIR/pyproject.toml" ]
 }
 
-# 启动 dashboard 的进程需要 HERMES_TUI_DIR，否则会尝试重建 TUI（包里没有 node_modules）。
-# 首次安装时 src 还没铺，静默跳过。
-if [ -f "$SRC_DIR/ui-tui/dist/entry.js" ]; then
-    configure_bundled_tui
-fi
+# dashboard 进程需要 HERMES_TUI_DIR，否则会尝试重建 TUI（包里没有 node_modules）
+configure_bundled_tui

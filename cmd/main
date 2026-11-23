@@ -13,8 +13,6 @@ export HERMES_HOME="$DATA_DIR"
 export PATH="$HOME_DIR/bin:/usr/local/bin:/usr/bin:/bin"
 export PYTHONUNBUFFERED=1
 
-# HERMES_BIN 由 lib.sh 提供（$HOME_DIR/bin/hermes）
-
 start_gateway() {
     if pid_alive "$GATEWAY_PID" && own_pid "$(read_pid "$GATEWAY_PID")"; then
         log "gateway already running pid=$(read_pid "$GATEWAY_PID")"
@@ -86,10 +84,7 @@ do_start() {
 }
 
 do_stop() {
-    stop_pid_file "$WATCHDOG_PID"
-    stop_pid_file "$DASHBOARD_PID"
-    stop_pid_file "$GATEWAY_PID"
-    kill_own_processes
+    stop_all
     log "stopped"
     return 0
 }

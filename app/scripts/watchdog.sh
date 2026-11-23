@@ -21,10 +21,8 @@ while [ -f "$WATCHDOG_PID" ] && [ "$(read_pid "$WATCHDOG_PID")" = "$$" ]; do
         cur_head=$(git -c "safe.directory=$SRC_DIR" -C "$SRC_DIR" rev-parse HEAD 2>/dev/null)
         if [ -n "$cur_head" ] && [ "$cur_head" != "$(cat "$DIST_MARK" 2>/dev/null)" ] \
            && [ -x "$APP_DIR/scripts/rebuild-dist.sh" ]; then
-            # 已有重建在跑就不再拉一个
-            if ! flock -n "$VAR_DIR/rebuild-dist.lock" -c true 2>/dev/null; then
-                :   # 已有重建在跑
-            else
+            # 拿得到锁才重建（拿不到说明已有重建在跑）
+            if flock -n "$VAR_DIR/rebuild-dist.lock" -c true 2>/dev/null; then
                 log "dist stale for ${cur_head:0:10}, rebuilding in background"
                 setsid nohup "$APP_DIR/scripts/rebuild-dist.sh" >> "$VAR_DIR/rebuild-dist.out" 2>&1 &
             fi
@@ -40,7 +38,7 @@ while [ -f "$WATCHDOG_PID" ] && [ "$(read_pid "$WATCHDOG_PID")" = "$$" ]; do
             echo $! > "$GATEWAY_PID"
         fi
         # 刚拉起的 dashboard 还在启动：pid 文件 120s 内 + 进程在，就再等一轮，别杀了重开
-        if pid_alive "$DASHBOARD_PID" && own_pid "$(read_pid "$DASHBOARD_PID")" && [ -f "$DASHBOARD_PID" ] \
+        if pid_alive "$DASHBOARD_PID" && own_pid "$(read_pid "$DASHBOARD_PID")" \
            && [ $(( $(date +%s) - $(stat -c %Y "$DASHBOARD_PID" 2>/dev/null || echo 0) )) -lt 120 ]; then
             sleep "$INTERVAL"; continue
         fi
