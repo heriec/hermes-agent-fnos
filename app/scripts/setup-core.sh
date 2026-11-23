@@ -91,7 +91,9 @@ SRC_HEAD=$("${GIT_SRC[@]}" rev-parse HEAD 2>/dev/null || true)
 # 入口 = 包内 CPython + 一个 3 行脚本。依赖不在这里装：hermes_bootstrap 启动时
 # 把 PM 提交的那一代依赖挂到 sys.path。
 DRY=${HERMES_FPK_DRY_RUN:-0}
-export HOME="$DATA_DIR"
+# HERMES_HOME 必须显式给出：不给的话 hermes 会按 $HOME/.hermes 建缓存/日志目录，
+# 于是每次安装都在 data/ 下多出一个空的 .hermes/。
+export HOME="$DATA_DIR" HERMES_HOME="$DATA_DIR"
 if [ "$DRY" = "1" ]; then
     log "DRY RUN: 跳过 launcher/pm"
     mkdir -p "$HOME_DIR/bin"
