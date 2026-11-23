@@ -19,7 +19,7 @@ https://gh-proxy.com/https://github.com/heriec/hermes-agent-fnos/releases/latest
 3. 安装向导里设置 Web 界面的用户名和密码（不是飞牛账号，密码只存 scrypt 哈希）。
 4. 安装完成后从桌面图标或 `http://<NAS 地址>:9219` 打开，登录后配置模型与消息渠道。
 
-要求：fnOS 0.9.0 及以上、x86_64；安装过程需要联网（拉取 Python 依赖与 node/ffmpeg 等运行时，约 300 MB）。
+要求：fnOS 0.9.0 及以上、x86_64；安装过程需要联网（下载 CPython、依赖与 node/ffmpeg 等运行时，约 500 MB）。
 
 ## 更新
 
@@ -27,7 +27,7 @@ Web 界面 → 设置 → 检查更新 → 更新 Hermes。流程是 `git fetch`
 
 - 国内网络：包内 git 已配 `gh-proxy.com` 加速前缀，拉取上游不需要代理。不想要可删掉 `$PKGHOME/src/.git/config` 里对应的 `insteadOf`。
 - gateway 在更新后 30 秒内由看门狗拉起，Web 界面自动恢复。
-- 网页更新过的版本不会被之后安装的 fpk 覆盖降级。
+- 网页更新过的源码不会被打包内旧版本覆盖；反过来，装更新的包时会以包内源码为准。
 
 ## 目录
 
@@ -119,6 +119,7 @@ cmd/                  fnOS 生命周期入口：main 启停，install/upgrade/un
 app/scripts/          setup-core 安装流程、watchdog 保活、rebuild-dist 前端重建
 app/ui/               桌面图标与入口配置
 wizard/install        安装向导（Web 登录账号密码）
+tests/                安装/升级判断与进程处理的回归测试（CI 跑）
 build.sh / build.env  fpk 打包
 ```
 
