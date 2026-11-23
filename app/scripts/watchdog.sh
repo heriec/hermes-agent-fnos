@@ -52,6 +52,12 @@ while [ -f "$WATCHDOG_PID" ] && [ "$(read_pid "$WATCHDOG_PID")" = "$$" ]; do
                     echo "$now" > "$VAR_DIR/.perm_warn"
                 fi
             fi
+            # 90s 冷却：安装/更新后 dashboard 启动慢，别每 30s 再拉一个抢端口
+            now_ts=$(date +%s); last_ts=$(cat "$VAR_DIR/.last_dash_restart" 2>/dev/null || echo 0)
+            if [ $((now_ts - last_ts)) -lt 90 ]; then
+                sleep "$INTERVAL"; continue
+            fi
+            echo "$now_ts" > "$VAR_DIR/.last_dash_restart"
             log "dashboard down or unresponsive, restarting"
             stop_pid_file "$DASHBOARD_PID"
             # --isolated 与 cmd/main 保持一致：避免 data 里残留的 host-dashboard.json 让重启失败

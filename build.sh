@@ -94,7 +94,7 @@ if [ -x "$PYSRC/bin/python3" ]; then
     echo ">>> bundling python: $PYSRC"
     cp -a "$PYSRC" "$PKG/app/python"
 else
-    echo "WARNING: 未找到内置 Python 3.14（$PYSRC）；安装会失败，需先放到该路径或设 HERMES_PYTHON_DIR" >&2
+    echo "ERROR: 未找到内置 Python 3.14（$PYSRC）；没有它安装必失败，先放到该路径或设 HERMES_PYTHON_DIR" >&2; exit 1
 fi
 mkdir -p "$PKG/app/src"
 
