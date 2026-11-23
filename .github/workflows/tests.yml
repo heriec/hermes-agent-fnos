@@ -1,0 +1,23 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 环境
+        run: |
+          bash --version | head -1
+          git --version
+          python3 --version
+
+      - name: 跑测试
+        run: bash tests/run.sh

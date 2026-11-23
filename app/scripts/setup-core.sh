@@ -2,7 +2,7 @@
 # 安装 / 升级共用的内核安装流程。用法: setup-core.sh install|upgrade
 #
 # 落盘布局（PKGHOME）：
-#   python/   包内 CPython 解释器
+#   python/   包内 CPython（只当解释器，依赖由 PM 提供）
 #   src/      内核源码，带 .git；网页「更新 Hermes」在这里 fetch + reset
 #   bin/hermes  入口脚本（PYTHONPATH -> src，解释器 -> python/bin/python3）
 #   data/     用户数据，安装流程从不写这里（只补 .env 里的 Web 登录凭据）
@@ -24,6 +24,7 @@ for f in hermes-version.env package-version.env; do
 done
 [ -n "${HERMES_VERSION:-}" ] || die "hermes-version.env 未定义 HERMES_VERSION"
 PKG_VER="${PKG_VERSION:-unknown}"
+PKG_COMMIT=${PKG_COMMIT:-}
 # 包标识 = 版本 + 内核 commit：同版本但换了 commit 也要重铺源码
 PKG_MARK="$PKG_VER-${PKG_COMMIT:0:8}"
 
@@ -61,9 +62,9 @@ SELF_UPDATED=0
 if [ -d "$SRC_DIR/.git" ] && [ -n "$PKG_COMMIT" ]; then
     cur_head=$("${GIT_SRC[@]}" rev-parse HEAD 2>/dev/null || true)
     if [ -n "$cur_head" ] && [ "$cur_head" != "$PKG_COMMIT" ]; then
-        # 包内 commit 是 HEAD 的祖先（shallow 里缺对象时也算）→ 保留现有源码
-        if "${GIT_SRC[@]}" merge-base --is-ancestor "$PKG_COMMIT" "$cur_head" 2>/dev/null \
-           || ! "${GIT_SRC[@]}" cat-file -e "$PKG_COMMIT" 2>/dev/null; then
+        # 只有"包内 commit 确实是当前 HEAD 的祖先"才保留：说明用户网页更新过、源码更新。
+        # commit 在已装仓库里根本不存在时不算更新（那正是装新包该铺源码的情况）。
+        if "${GIT_SRC[@]}" merge-base --is-ancestor "$PKG_COMMIT" "$cur_head" 2>/dev/null; then
             SELF_UPDATED=1
         fi
     fi
@@ -82,9 +83,13 @@ else
 fi
 [ -f "$SRC_DIR/hermes_cli/web_dist/index.html" ] || log "WARNING: 包内 web_dist 缺失（Web 界面会空白）"
 
+# 真实落盘源码的 commit（用户网页更新过时比包内 commit 新）
+SRC_HEAD=$("${GIT_SRC[@]}" rev-parse HEAD 2>/dev/null || true)
+[ -n "$SRC_HEAD" ] || SRC_HEAD="$PKG_COMMIT"
+
 # ---------------------------------------------------------------- 启动器
 # 入口 = 包内 CPython + 一个 3 行脚本。依赖不在这里装：hermes_bootstrap 启动时
-# 把 PM 提交的 generation 挂到 sys.path。
+# 把 PM 提交的那一代依赖挂到 sys.path。
 DRY=${HERMES_FPK_DRY_RUN:-0}
 export HOME="$DATA_DIR"
 if [ "$DRY" = "1" ]; then
@@ -93,12 +98,16 @@ if [ "$DRY" = "1" ]; then
     printf '#!/bin/sh\nexit 0\n' > "$HERMES_BIN"
     chmod +x "$HERMES_BIN"
 else
-# 1) 包内 CPython 落到 HOME
-if [ ! -x "$PY_BIN" ] && [ -d "$APP_DIR/python" ]; then
-    log "installing bundled python -> $HOME_DIR/python"
-    rm -rf "$HOME_DIR/python"
-    cp -a --reflink=auto "$APP_DIR/python" "$HOME_DIR/python" >>"$LOG_FILE" 2>&1 \
-        || die "包内 python 复制失败"
+# 1) 包内 CPython 落到 HOME（版本不同就替换，否则新包要求更高的 python 时会一直用旧的）
+if [ -d "$APP_DIR/python" ]; then
+    NEW_PY=$("$APP_DIR/python/bin/python3" -V 2>&1 || true)
+    CUR_PY=$([ -x "$PY_BIN" ] && "$PY_BIN" -V 2>&1 || true)
+    if [ "$NEW_PY" != "$CUR_PY" ]; then
+        log "installing bundled python ($NEW_PY) -> $HOME_DIR/python"
+        rm -rf "$HOME_DIR/python"
+        cp -a --reflink=auto "$APP_DIR/python" "$HOME_DIR/python" >>"$LOG_FILE" 2>&1 \
+            || die "包内 python 复制失败"
+    fi
 fi
 [ -x "$PY_BIN" ] || die "找不到包内 CPython（$APP_DIR/python）"
 
@@ -139,10 +148,10 @@ fi  # DRY
 
 # ---------------------------------------------------------------- 安装戳兜底
 # install-stamp.json 的 commit 若是全零，Hermes 会当占位符 → Web 显示 unknown。
-# 按包内 package-version.env 的 PKG_COMMIT 校准（用包内 CPython，不依赖系统 python）。
+# 校准成真实落盘的 HEAD（用户网页更新过时，它比包内 commit 新）。
 STAMP="$SRC_DIR/install-stamp.json"
-if [ -n "$PKG_COMMIT" ] && ! printf '%s' "$PKG_COMMIT" | grep -qE '^0+$'; then
-    if "$PY_BIN" - "$STAMP" "$PKG_COMMIT" "$HERMES_VERSION" <<'PY' >>"$LOG_FILE" 2>&1
+if [ -n "$SRC_HEAD" ] && ! printf '%s' "$SRC_HEAD" | grep -qE '^0+$'; then
+    if "$PY_BIN" - "$STAMP" "$SRC_HEAD" "$HERMES_VERSION" <<'PY' >>"$LOG_FILE" 2>&1
 import json, sys, pathlib
 path, commit, ver = sys.argv[1:4]
 p = pathlib.Path(path)
@@ -170,43 +179,52 @@ else
 fi
 
 # ---------------------------------------------------------------- Web 登录（basic provider）
+# 密码只在第一次安装时确定：既有哈希就一律沿用，升级/重装都不改。
+# 只有首次安装且向导没传密码时才生成随机密码，写进安装提示。
 ENV_FILE="$DATA_DIR/.env"
+DASH_USER=${HERMES_DASH_USER:-${WIZARD_HERMES_DASH_USER:-${hermes_dash_user:-${wizard_hermes_dash_user:-admin}}}}
+DASH_USER=${DASH_USER//\'/}     # 值要写进 .env 的单引号里
+DASH_PASS=${HERMES_DASH_PASSWORD:-${WIZARD_HERMES_DASH_PASSWORD:-${hermes_dash_password:-${wizard_hermes_dash_password:-}}}}
+
+env_set() {   # env_set KEY=VALUE ...：改已有键、没有就追加，绝不产生重复行
+    "$PY_BIN" - "$ENV_FILE" "$@" <<'PY'
+import os, sys, pathlib
+path = pathlib.Path(sys.argv[1])
+items = [a.split("=", 1) for a in sys.argv[2:]]
+keys = {k for k, _ in items}
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+kept = [l for l in lines if not any(l.startswith(k + "=") for k in keys)]
+path.write_text("\n".join(kept + [f"{k}='{v}'" for k, v in items]) + "\n", encoding="utf-8")
+if path.exists():
+    os.chmod(path, 0o600)
+PY
+}
+
 if grep -q '^HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=' "$ENV_FILE" 2>/dev/null; then
-    log "dashboard auth already configured, skip"
+    log "Web 登录密码沿用第一次安装时设置的，不修改"
 else
-    # 向导字段：fnOS 不同版本传进来的变量名大小写不一致（实测 mefrp 同时兼容 WIZARD_* / wizard_*），
-    # 这里全部兜一遍，避免「向导里明明填了密码却没生效」。
-    DASH_USER=${HERMES_DASH_USER:-${WIZARD_HERMES_DASH_USER:-${hermes_dash_user:-${wizard_hermes_dash_user:-admin}}}}
-    DASH_PASS=${HERMES_DASH_PASSWORD:-${WIZARD_HERMES_DASH_PASSWORD:-${hermes_dash_password:-${wizard_hermes_dash_password:-}}}}
     if [ -z "$DASH_PASS" ]; then
         DASH_PASS=$(openssl rand -base64 18 2>/dev/null | tr -d '\n')
-        log "WARNING: 未提供密码，已生成随机密码"
+        log "WARNING: 安装时未提供密码，已生成随机密码"
         [ -n "${TRIM_TEMP_LOGFILE:-}" ] && echo "Web 登录：$DASH_USER / $DASH_PASS" >> "$TRIM_TEMP_LOGFILE"
     fi
     if [ "$DRY" = "1" ]; then
-        DASH_HASH='scrypt$dryrun'
+        log "DRY: 跳过 Web 凭据写入"
     else
-        # 只用标准库算 scrypt（格式与 plugins.dashboard_auth.basic.hash_password 一致），
-        # 避免安装阶段因 httpx 等运行时依赖未就绪而失败
+        # 只用标准库算 scrypt，格式与 plugins.dashboard_auth.basic.hash_password 一致
         DASH_HASH=$(printf '%s' "$DASH_PASS" | "$PY_BIN" -c '
 import base64, hashlib, secrets, sys
-pw = sys.stdin.read()
 salt = secrets.token_bytes(16)
-dk = hashlib.scrypt(pw.encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=32, maxmem=0)
+dk = hashlib.scrypt(sys.stdin.read().encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=32, maxmem=0)
 print("scrypt$16384$8$1$%s$%s" % (base64.b64encode(salt).decode(), base64.b64encode(dk).decode()))
 ' 2>>"$LOG_FILE")
+        [ -n "$DASH_HASH" ] || die "密码哈希生成失败"
+        SECRET=$(openssl rand -base64 32 2>/dev/null | tr -d '\n')
+        env_set "HERMES_DASHBOARD_BASIC_AUTH_USERNAME=$DASH_USER" \
+                "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH=$DASH_HASH" \
+                "HERMES_DASHBOARD_BASIC_AUTH_SECRET=$SECRET"
+        log "Web 登录凭据已写入（user=$DASH_USER）"
     fi
-    [ -n "$DASH_HASH" ] || die "密码哈希生成失败"
-    SECRET=$(openssl rand -base64 32 2>/dev/null | tr -d '\n')
-    {
-        echo ""
-        echo "# Hermes Web 登录（dashboard basic provider）"
-        echo "HERMES_DASHBOARD_BASIC_AUTH_USERNAME='$DASH_USER'"
-        echo "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH='$DASH_HASH'"
-        echo "HERMES_DASHBOARD_BASIC_AUTH_SECRET='$SECRET'"
-    } >> "$ENV_FILE"
-    chmod 600 "$ENV_FILE" 2>/dev/null || true
-    log "dashboard auth configured for user=$DASH_USER"
 fi
 
 # ---------------------------------------------------------------- 源码指向校验
@@ -216,24 +234,24 @@ if [ "$DRY" != "1" ] && [ -x "$PY_BIN" ]; then
     log "source -> ${CUR_SRC:-unknown}"
 fi
 
-# 包内 dist 就是为当前 HEAD 构建的：写 marker，启动时不会白触发一次重建
-if [ -d "$SRC_DIR/.git" ]; then
-    "${GIT_SRC[@]}" rev-parse HEAD 2>/dev/null > "$DIST_MARK" || true
-    log "dist marker: $(cat "$DIST_MARK" 2>/dev/null | cut -c1-10)"
+# 包内 dist 是按包内 commit 构建的；源码被网页更新过（HEAD 更新）时，
+# marker 要记包内 commit，watchdog 才会重建，否则会拿旧 dist 配新后端。
+if [ -d "$SRC_DIR/.git" ] && [ -n "$PKG_COMMIT" ]; then
+    if [ -f "$SRC_DIR/hermes_cli/web_dist/index.html" ]; then
+        echo "$PKG_COMMIT" > "$DIST_MARK"
+        log "dist marker: $(cut -c1-10 "$DIST_MARK") (built) | src HEAD: ${SRC_HEAD:0:10}"
+    else
+        rm -f "$DIST_MARK"   # dist 不完整就别写 marker，交给 watchdog 重建
+        log "WARNING: web_dist 缺失，已清 marker，启动后会自动重建"
+    fi
 fi
-
-# ---------------------------------------------------------------- 版本账本
-ACTUAL_HEAD=$("${GIT_SRC[@]}" rev-parse HEAD 2>/dev/null || true)
-[ -n "$ACTUAL_HEAD" ] || ACTUAL_HEAD="$PKG_COMMIT"
-ledger_record "$PKG_VER" "$HERMES_VERSION" "$ACTUAL_HEAD" "fpk"
-log "version ledger: $(grep -c '' "$LEDGER" 2>/dev/null || echo 0) lines @ $LEDGER"
 
 # ---------------------------------------------------------------- 权限
 if [ -n "${TRIM_USERNAME:-}" ]; then
     chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$APP_DIR" 2>>"$LOG_FILE" || log "WARNING: chown app dir failed"
     chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$HOME_DIR" 2>>"$LOG_FILE" || log "WARNING: chown home failed"
     # PM 状态目录里若残留 root 文件，应用用户建 .leases 会失败（install state is not writable）。
-    for pd in "$DATA_DIR/.hermes" "$DATA_DIR/installs"; do
+    for pd in "$DATA_DIR/tools" "$DATA_DIR/installs"; do
         [ -d "$pd" ] || continue
         n=$(find "$pd" -user root 2>/dev/null | wc -l)
         [ "$n" -gt 0 ] && { log "perms: 修复 $pd 下 $n 个 root 条目"; chown -R "$TRIM_USERNAME:$TRIM_USERNAME" "$pd" 2>>"$LOG_FILE" || true; }

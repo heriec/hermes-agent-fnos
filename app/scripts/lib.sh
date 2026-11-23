@@ -5,18 +5,24 @@
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # installed: .../target/scripts → APP_DIR=.../target ; APP_ROOT=/var/apps/<app>
 # project:   <proj>/scripts       → APP_DIR=<proj>
-APP_DIR=${TRIM_APPDEST:-$(dirname "$SELF_DIR")}
+if [ -n "${TRIM_APPDEST:-}" ]; then
+    APP_DIR=$TRIM_APPDEST
+else
+    APP_DIR=$(dirname "$SELF_DIR")
+    # 从 cmd/ 被直接调用时，APP_DIR 会是 /var/apps/<app>，而脚本在 .../target/scripts
+    [ -d "$APP_DIR/scripts" ] || [ ! -d "$APP_DIR/target/scripts" ] || APP_DIR="$APP_DIR/target"
+fi
 APP_ROOT=$(dirname "$APP_DIR")
 HOME_DIR=${TRIM_PKGHOME:-$APP_ROOT/home}
 VAR_DIR=${TRIM_PKGVAR:-$APP_ROOT/var}
 
 DATA_DIR="$HOME_DIR/data"
-# 代码只有一份，由 git 管（update = fetch + reset --hard）；历史只记在 versions.json。
+# 代码只有一份，由 git 管（update = fetch + reset --hard）。
 # 源码从包复制到持久目录：target 会被升级整包替换，运行期的写入也不该落在包目录。
 SRC_DIR="${HERMES_SRC_DIR:-$HOME_DIR/src}"
-LEDGER="$HOME_DIR/versions.json"
 DIST_MARK="$DATA_DIR/.dist_commit"   # dist 对应的源码 commit（hermes update 后据此触发重建）
 # 入口 = 包内 CPython + 一个 3 行脚本；依赖由 PM 在运行期挂载。
+# 包里这份 python 只当解释器用（自带 pip，不含任何依赖）。
 PY_BIN="$HOME_DIR/python/bin/python3"
 HERMES_BIN="$HOME_DIR/bin/hermes"
 
@@ -24,10 +30,16 @@ HERMES_BIN="$HOME_DIR/bin/hermes"
 WEB_PORT=${HERMES_WEB_PORT:-$(cat "$APP_DIR/config/web_port" 2>/dev/null || echo 9219)}
 LOG_FILE="$VAR_DIR/info.log"
 
-# fnOS 的 git 来自 git fpk，--exec-path 指向不存在的目录（git 找不到 remote-https），
-# 指回系统的 git-core；npm 走国内镜像。
-if command -v git >/dev/null 2>&1 && [ ! -d "$(git --exec-path 2>/dev/null)" ]; then
-    export GIT_EXEC_PATH=/usr/lib/git-core
+# fnOS 的 git 来自 git fpk，它的 helper 目录有时指向不存在的路径，
+# 于是 git 认不出 remote-https（网页更新就失败）。按"能不能找到 git-remote-https"实测决定。
+if command -v git >/dev/null 2>&1; then
+    ge=$(git --exec-path 2>/dev/null)
+    if [ ! -e "$ge/git-remote-https" ]; then
+        for c in /usr/lib/git-core /usr/libexec/git-core /usr/lib/git; do
+            [ -e "$c/git-remote-https" ] && { export GIT_EXEC_PATH="$c"; break; }
+        done
+    fi
+    unset ge
 fi
 export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}"
 
@@ -68,10 +80,25 @@ pid_alive() {
 
 read_pid() { head -n1 "$1" 2>/dev/null | tr -d '[:space:]'; }
 
+# pid 文件可能指向被系统回收复用的 pid；下手前确认命令行属于本应用
+own_pid() {
+    local p=$1 cmd
+    [ -r "/proc/$p/cmdline" ] || return 1
+    cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
+    case "$cmd" in
+        *"$HOME_DIR"*|*"$APP_ROOT"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 stop_pid_file() {
     local f=$1 p
     p=$(read_pid "$f")
     if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
+        if ! own_pid "$p"; then
+            log "pid $p 不属于本应用（命令行不匹配），跳过不杀"
+            rm -f "$f"; return 0
+        fi
         kill -TERM "$p" 2>/dev/null || true
         for _ in 1 2 3 4 5; do
             kill -0 "$p" 2>/dev/null || break
@@ -85,9 +112,17 @@ stop_pid_file() {
 # 只清理本安装目录下的进程，绝不误伤同机其它 Hermes。
 # 实际进程是 PM 的 python -I -c "sys.path.insert(0, '<home>/src')"，命令行里带的是源码路径。
 kill_own_processes() {
-    pkill -TERM -f "$HOME_DIR/src" 2>/dev/null || true
+    # 三种形态都出现过：包内 python -m hermes_cli.main、python -I -c (sys.path 指向 src)、
+    # 以及入口脚本本身。任何一种都不能漏，否则 stop/uninstall 后进程残留。
+    local pat
+    for pat in "$HOME_DIR/python/bin/python3" "$HOME_DIR/src" "$HOME_DIR/bin/hermes" \
+               "$APP_DIR/scripts/watchdog.sh"; do
+        pkill -TERM -f "$pat" 2>/dev/null || true
+    done
     sleep 1
-    pkill -KILL -f "$HOME_DIR/src" 2>/dev/null || true
+    for pat in "$HOME_DIR/python/bin/python3" "$HOME_DIR/src" "$HOME_DIR/bin/hermes"; do
+        pkill -KILL -f "$pat" 2>/dev/null || true
+    done
 }
 
 have_src() {
@@ -96,30 +131,6 @@ have_src() {
 
 # 启动 dashboard 的进程需要 HERMES_TUI_DIR，否则会尝试重建 TUI（包里没有 node_modules）。
 # 首次安装时 src 还没铺，静默跳过。
-[ -f "$SRC_DIR/ui-tui/dist/entry.js" ] && configure_bundled_tui
-
-# ---------------------------------------------------------------- 版本账本 versions.json
-ledger_record() {
-    local ver="$1" kernel="$2" commit="$3" source="$4"
-    local py="$PY_BIN"
-    [ -x "$py" ] || py=$(command -v python3 2>/dev/null) || return 0
-    "$py" - "$LEDGER" "$ver" "$kernel" "$commit" "$source" <<'PY' >>"$LOG_FILE" 2>&1 || true
-import json, os, sys, datetime
-path, ver, kernel, commit, source = sys.argv[1:6]
-now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-try:
-    db = json.load(open(path))
-except Exception:
-    db = {"current": {}, "history": []}
-entry = {"version": ver, "kernel": kernel, "commit": commit,
-         "installed_at": now, "source": source}
-hist = [h for h in db.get("history", [])
-        if not (h.get("commit") == commit and h.get("version") == ver)]
-hist.insert(0, entry)
-db["current"] = entry
-db["history"] = hist[:30]
-tmp = path + ".tmp"
-json.dump(db, open(tmp, "w"), ensure_ascii=False, indent=2)
-os.replace(tmp, path)
-PY
-}
+if [ -f "$SRC_DIR/ui-tui/dist/entry.js" ]; then
+    configure_bundled_tui
+fi
