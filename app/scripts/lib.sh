@@ -9,7 +9,6 @@ APP_DIR=${TRIM_APPDEST:-$(dirname "$SELF_DIR")}
 APP_ROOT=$(dirname "$APP_DIR")
 HOME_DIR=${TRIM_PKGHOME:-$APP_ROOT/home}
 VAR_DIR=${TRIM_PKGVAR:-$APP_ROOT/var}
-ETC_DIR=${TRIM_PKGETC:-$APP_ROOT/etc}
 
 DATA_DIR="$HOME_DIR/data"
 # 代码只有一份，由 git 管（update = fetch + reset --hard）；历史只记在 versions.json。
@@ -83,11 +82,12 @@ stop_pid_file() {
     rm -f "$f"
 }
 
-# 只清理本安装目录下的进程，绝不误伤同机其它 Hermes
+# 只清理本安装目录下的进程，绝不误伤同机其它 Hermes。
+# 实际进程是 PM 的 python -I -c "sys.path.insert(0, '<home>/src')"，命令行里带的是源码路径。
 kill_own_processes() {
-    pkill -TERM -f "$HOME_DIR/bin/hermes" 2>/dev/null || true
+    pkill -TERM -f "$HOME_DIR/src" 2>/dev/null || true
     sleep 1
-    pkill -KILL -f "$HOME_DIR/bin/hermes" 2>/dev/null || true
+    pkill -KILL -f "$HOME_DIR/src" 2>/dev/null || true
 }
 
 have_src() {

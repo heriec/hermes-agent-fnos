@@ -7,7 +7,6 @@ set -u
 # lib.sh 优先找同目录，找不到就去安装目录（脚本被单独拷出来用时）
 LIB="$(dirname "$0")/lib.sh"
 [ -f "$LIB" ] || LIB="${TRIM_APPDEST:-/var/apps/hermes-agent/target}/scripts/lib.sh"
-[ -f "$LIB" ] || LIB="/vol1/@appcenter/hermes-agent/scripts/lib.sh"
 [ -f "$LIB" ] || { echo "找不到 lib.sh"; exit 1; }
 . "$LIB"
 LOG_TAG=fix-perms

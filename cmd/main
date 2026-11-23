@@ -94,11 +94,12 @@ do_stop() {
 }
 
 do_status() {
-    if pid_alive "$DASHBOARD_PID" \
-       && curl -sf -o /dev/null --max-time 3 "http://127.0.0.1:${WEB_PORT}/"; then
-        return 0
-    fi
-    return 3
+    # 端口应答即视为在跑；pid 文件可能因 Hermes 自身重启而过期
+    curl -sf -o /dev/null --max-time 3 "http://127.0.0.1:${WEB_PORT}/" || return 3
+    local lp
+    lp=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
+    [ -n "$lp" ] && [ "$lp" != "$(read_pid "$DASHBOARD_PID")" ] && echo "$lp" > "$DASHBOARD_PID"
+    return 0
 }
 
 case "${1:-}" in
