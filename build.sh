@@ -259,8 +259,6 @@ sed -i -E "s|^checksum[[:space:]]*=.*|checksum              = $SUM|" "$PKG/manif
 cp -f "$AT" "$PKG/app.tgz"
 FPK="$ROOT/$APPNAME-$VERSION.fpk"
 ( cd "$PKG" && tar -czf "$FPK" app.tgz manifest cmd config wizard ICON.PNG ICON_256.PNG )
-# 不带版本号的别名：/releases/latest/download/<appname>.fpk 这个固定链接要靠它
-cp -f "$FPK" "$ROOT/$APPNAME.fpk"
 
 # 自检：解包核对 checksum 与成员
 X="$WORK/fpkx"; rm -rf "$X"; mkdir -p "$X"; tar xf "$FPK" -C "$X"
@@ -269,4 +267,4 @@ GOT=$(sed -n 's/^checksum[[:space:]]*=[[:space:]]*//p' "$X/manifest" | tr -d '\r
 [ "$SUM" = "$SUM2" ] && [ "$SUM" = "$GOT" ] || {
     echo "自检失败: 计算=$SUM 归档内=$SUM2 manifest=$GOT" >&2; exit 1; }
 echo ">>> checksum OK: $SUM"
-echo ">>> done: $FPK ($(du -h "$FPK" | cut -f1)) + $APPNAME.fpk（别名）"
+echo ">>> done: $FPK ($(du -h "$FPK" | cut -f1))"

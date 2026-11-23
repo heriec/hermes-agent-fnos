@@ -85,7 +85,7 @@ jobs:
           echo "package=$VER kernel=$KVER commit=$COMMIT"
           ./build.sh --from "$UPSTREAM" --version "$VER" --kernel-version "$KVER" \
                      --commit "$COMMIT" --commit-date "$CDATE" --appname hermes-agent --port 9219
-          md5sum hermes-agent-*.fpk hermes-agent.fpk
+          md5sum hermes-agent-*.fpk
 
       - name: 包内自检（.git / 干净度 / 大小）
         run: |
@@ -123,14 +123,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hermes-agent-fpk
-          path: |
-            hermes-agent-*.fpk
-            hermes-agent.fpk
+          path: hermes-agent-*.fpk
 
       - name: 打 tag 时挂 Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            hermes-agent-*.fpk
-            hermes-agent.fpk
+          files: hermes-agent-*.fpk
