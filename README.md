@@ -124,4 +124,4 @@ build.sh / build.env  fpk 打包
 
 ## 许可
 
-本仓库的安装壳代码可自由使用。Hermes Agent 本体遵循其上游项目授权，见 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)。
+本仓库的安装壳代码使用 [MIT](LICENSE)。Hermes Agent 本体遵循其上游项目授权，见 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)。
